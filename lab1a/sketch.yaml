@@ -1,0 +1,2 @@
+default_fqbn: pololu-a-star:avr:a-star32U4
+default_port: /dev/cu.usbmodem14401
