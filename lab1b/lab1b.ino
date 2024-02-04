@@ -66,6 +66,11 @@ void checkEncoders() {
         // Update the position of the robot in cm
         positionLeft += (countsLeft - prevCountsLeft) * WHEEL_CIRCUMFERENCE / CLICKS_PER_REVOLUTION;
         positionRight += (countsRight - prevCountsRight) * WHEEL_CIRCUMFERENCE / CLICKS_PER_REVOLUTION;
+        Serial.print("(");
+        Serial.print(positionLeft);
+        Serial.print(", ");
+        Serial.print(positionRight);
+        Serial.println(")");
 
         // Get the distance to the goal and obtain the abs for consistent
         // calculations regardless of direction
