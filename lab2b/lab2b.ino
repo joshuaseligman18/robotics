@@ -115,6 +115,7 @@ void setMotors() {
             }
         }
 
+        // Compensation for the motors in case they are inconsistent
         if (leftSpeed < L_MOTOR_FACTOR_THRESHOLD) {
             leftSpeed *= L_MOTOR_FACTOR;
         }
@@ -122,7 +123,9 @@ void setMotors() {
             rightSpeed *= R_MOTOR_FACTOR;
         }
 
-        motors.setSpeeds(-leftSpeed, -rightSpeed);
+        // Left is right and right is left
+        // Also the robot is moving backwards
+        motors.setSpeeds(-rightSpeed, -leftSpeed);
         motorPm = motorCm;
     }
 }
