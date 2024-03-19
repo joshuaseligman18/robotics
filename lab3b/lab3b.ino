@@ -14,7 +14,6 @@ const int TRIG_PIN = 5;
 
 // US variables
 const float MAX_DISTANCE = 300.0f;
-boolean usReadFlag = false;
 
 const unsigned long PERIOD = 15;
 unsigned long prevMillis = 0;
@@ -22,28 +21,33 @@ unsigned long prevMillis = 0;
 const float TARGET = 30.48f;
 
 const bool P_ON = true;
-const bool I_ON = false;
-const bool D_ON = false;
+const bool I_ON = true;
+const bool D_ON = true;
 
-const float K_P = 3;
-const float K_I = 0.1;
-const float K_D = 0.2;
+const float K_P = 2.85f;
+const float K_I = 0.05f;
+const float K_D = 0.35f;
 
-const int BASE_SPEED = 100;
-const int MIN_SPEED = 75;
-const int MAX_SPEED = 125;
+const int BASE_SPEED = 75;
+const int MIN_SPEED = 50;
+const int MAX_SPEED = 100;
 const int HALF_SPEED_RANGE = (MAX_SPEED - MIN_SPEED) / 2;
 
-const float PID_MIN = -5 * TARGET;
-const float PID_MAX = 5 * TARGET;
+const int PID_THRESHOLD = 5;
+const float PID_MIN = -1 * PID_THRESHOLD * TARGET;
+const float PID_MAX = PID_THRESHOLD * TARGET;
 const float PID_RANGE = PID_MAX;
+
+float prevError = 0.0f;
+float errorSum = 0.0f;
+const float INTEGRAL_THRESHOLD = 12.0f;
 
 void setup() {
     Serial.begin(57600);
 
     // Set up servo pins
     headServo.attach(HEAD_SERVO_PIN);
-    headServo.write(165);
+    headServo.write(170);
     
     // Set up US pins
     pinMode(ECHO_PIN, INPUT);
@@ -95,6 +99,23 @@ void runPid(float curDistance) {
         pidCalculation += K_P * error;
     }
 
+    if (I_ON) {
+        errorSum += error;
+        if (errorSum > INTEGRAL_THRESHOLD) {
+            errorSum = INTEGRAL_THRESHOLD;
+        } else if (errorSum < -1 * INTEGRAL_THRESHOLD) {
+            errorSum = -1 * INTEGRAL_THRESHOLD;
+        }
+
+        pidCalculation += K_I * errorSum;
+    }
+
+    if (D_ON) {
+        float dErr = error - prevError;
+        pidCalculation += K_P * dErr;
+        prevError = error;
+    }
+
     if (pidCalculation < PID_MIN) {
         pidCalculation = PID_MIN;
     } else if (pidCalculation > PID_MAX) {
@@ -119,10 +140,4 @@ void runPid(float curDistance) {
     }
     
     motors.setSpeeds(-rightSpeed, -leftSpeed);
-
-    Serial.print(error);
-    Serial.print(", ");
-    Serial.print(leftSpeed);
-    Serial.print(", ");
-    Serial.println(rightSpeed);
 }
