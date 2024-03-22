@@ -20,17 +20,17 @@ unsigned long prevPidMillis = 0;
 const float TARGET = 30.48f;
 
 const bool P_ON = true;
-const bool I_ON = true;
+const bool I_ON = false;
 const bool D_ON = true;
 const bool HEAD_ON = true;
 
 const float K_P = 2.85f;
-const float K_I = 0.035f;
-const float K_D = 2.85f;
+const float K_I = 0.005f;
+const float K_D = 0.325f;
 
-const int BASE_SPEED = 100;
-const int MIN_SPEED = 75;
-const int MAX_SPEED = 125;
+const int BASE_SPEED = 125;
+const int MIN_SPEED = 100;
+const int MAX_SPEED = 150;
 const int HALF_SPEED_RANGE = (MAX_SPEED - MIN_SPEED) / 2;
 
 const int PID_THRESHOLD = 5;
@@ -97,6 +97,8 @@ float usReadCm() {
     } else if (distance == 0) {
         distance = MAX_DISTANCE;
     }
+
+    Serial.println(distance);
 
     return distance;
 }
