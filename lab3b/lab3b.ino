@@ -28,9 +28,9 @@ const bool I_ON = false;
 const bool D_ON = true;
 const bool HEAD_ON = true;
 
-const float K_P = 2.225f;
+const float K_P = 2.21f;
 const float K_I = 0.005f;
-const float K_D = 0.225f;
+const float K_D = 0.21f;
 
 const int BASE_SPEED = 100;
 const int MIN_SPEED = 75;
@@ -54,10 +54,10 @@ const float TARGET_FRONT = 30.48f;
 const float K_P_FRONT = 4.25f;
 float pidAdjustment = 0;
 
-const int VALUES_SIZE = 5;
-float pidValues[VALUES_SIZE] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
-int valueIndex = 0;
-int sideValueIndex = 0;
+float lastSide = 0.0f;
+float lastFront = 0.0f;
+const int NUM_STEPS = 5;
+int step = 0;
 
 void setup() {
     Serial.begin(57600);
@@ -78,32 +78,28 @@ void loop() {
     unsigned long curMillis = millis();
     if (curMillis >= prevPidMillis + PID_PERIOD) {
         bool ran = false;
-        if (valueIndex < VALUES_SIZE - 1) {
+        if (step < NUM_STEPS - 1) {
             ran = checkSide();
         } else {
             ran = checkFront(); 
         }
 
         if (ran) {
-            if (valueIndex < VALUES_SIZE - 1) {
-                sideValueIndex = valueIndex;
+            step++;
+            if (step == NUM_STEPS) {
+                step = 0;
             }
 
-            valueIndex++;
-            if (valueIndex == VALUES_SIZE) {
-                valueIndex = 0;
-            }
-
-            if (valueIndex == VALUES_SIZE - 1) {
+            if (step == NUM_STEPS - 1) {
                 if (HEAD_ON) {
                     headServo.write(FRONT_POSITION);
                     headMoveStart = curMillis;
                     headDoneMoving = false;
                 } else {
-                    pidValues[valueIndex] = 0.0f;
-                    valueIndex = 0;
+                    lastFront = 0.0f;
+                    step = 0;
                 }
-            } else if (valueIndex == 0) {
+            } else if (step == 0) {
                 if (HEAD_ON) {
                     headServo.write(SIDE_POSITION);
                     headMoveStart = curMillis;
@@ -112,7 +108,7 @@ void loop() {
             }
             prevPidMillis = curMillis;
         }
-        adjustMotors(pidValues[sideValueIndex] + pidValues[4]);
+        adjustMotors(lastSide + lastFront);
     }
 
 }
@@ -176,8 +172,7 @@ bool checkSide() {
             pidCalculation = PID_MAX;
         }
 
-        pidValues[valueIndex] = pidCalculation;
-
+        lastSide = pidCalculation;
         return true;
     } else {
         return false;
@@ -200,8 +195,7 @@ float checkFront() {
         
         pidAdjustment = -1 * K_P_FRONT * error;        
 
-        pidValues[valueIndex] = pidAdjustment;
-
+        lastFront = pidAdjustment;
         return true;
     } else {
         return false;
