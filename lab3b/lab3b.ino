@@ -43,6 +43,8 @@ const float PID_MAX = PID_THRESHOLD * TARGET;
 const float PID_RANGE = PID_MAX;
 
 float prevError = 0.0f;
+
+// INTEGRAL NOT USED
 float errorSum = 0.0f;
 const float INTEGRAL_THRESHOLD = 10.0f;
 
@@ -96,6 +98,7 @@ void loop() {
                     headMoveStart = curMillis;
                     headDoneMoving = false;
                 } else {
+                    // NOT REACHED IN LAB
                     lastFront = 0.0f;
                     step = 0;
                 }
@@ -110,7 +113,6 @@ void loop() {
         }
         adjustMotors(lastSide + lastFront);
     }
-
 }
 
 float usReadCm() {
@@ -149,6 +151,7 @@ bool checkSide() {
             pidCalculation += K_P * error;
         }
 
+        // NOT USED
         if (I_ON) {
             errorSum += error;
             if (errorSum > INTEGRAL_THRESHOLD) {
