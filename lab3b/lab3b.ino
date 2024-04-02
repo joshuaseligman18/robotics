@@ -14,8 +14,12 @@ const int TRIG_PIN = 5;
 
 const float MAX_DISTANCE = 300.0f;
 
-const unsigned long PID_PERIOD = 15;
+const unsigned long PID_PERIOD = 20;
 unsigned long prevPidMillis = 0;
+
+const unsigned long HEAD_MOVE_DURATION = 200;
+unsigned long headMoveStart = 0;
+bool headDoneMoving = true;
 
 const float TARGET = 30.48f;
 
@@ -24,13 +28,13 @@ const bool I_ON = false;
 const bool D_ON = true;
 const bool HEAD_ON = true;
 
-const float K_P = 2.85f;
+const float K_P = 2.21f;
 const float K_I = 0.005f;
-const float K_D = 0.325f;
+const float K_D = 0.21f;
 
-const int BASE_SPEED = 125;
-const int MIN_SPEED = 100;
-const int MAX_SPEED = 150;
+const int BASE_SPEED = 100;
+const int MIN_SPEED = 75;
+const int MAX_SPEED = 125;
 const int HALF_SPEED_RANGE = (MAX_SPEED - MIN_SPEED) / 2;
 
 const int PID_THRESHOLD = 5;
@@ -39,6 +43,8 @@ const float PID_MAX = PID_THRESHOLD * TARGET;
 const float PID_RANGE = PID_MAX;
 
 float prevError = 0.0f;
+
+// INTEGRAL NOT USED
 float errorSum = 0.0f;
 const float INTEGRAL_THRESHOLD = 10.0f;
 
@@ -49,6 +55,11 @@ const int FRONT_POSITION = 90;
 const float TARGET_FRONT = 30.48f;
 const float K_P_FRONT = 4.25f;
 float pidAdjustment = 0;
+
+float lastSide = 0.0f;
+float lastFront = 0.0f;
+const int NUM_STEPS = 5;
+int step = 0;
 
 void setup() {
     Serial.begin(57600);
@@ -68,13 +79,39 @@ void setup() {
 void loop() {
     unsigned long curMillis = millis();
     if (curMillis >= prevPidMillis + PID_PERIOD) {
-        float distance = usReadCm();
-        float pidCalculation = runPid(distance);
-        if (HEAD_ON) {
-            checkFront();
+        bool ran = false;
+        if (step < NUM_STEPS - 1) {
+            ran = checkSide();
+        } else {
+            ran = checkFront(); 
         }
-        adjustMotors(pidCalculation + pidAdjustment);
-        prevPidMillis = curMillis;
+
+        if (ran) {
+            step++;
+            if (step == NUM_STEPS) {
+                step = 0;
+            }
+
+            if (step == NUM_STEPS - 1) {
+                if (HEAD_ON) {
+                    headServo.write(FRONT_POSITION);
+                    headMoveStart = curMillis;
+                    headDoneMoving = false;
+                } else {
+                    // NOT REACHED IN LAB
+                    lastFront = 0.0f;
+                    step = 0;
+                }
+            } else if (step == 0) {
+                if (HEAD_ON) {
+                    headServo.write(SIDE_POSITION);
+                    headMoveStart = curMillis;
+                    headDoneMoving = false;
+                }
+            }
+            prevPidMillis = curMillis;
+        }
+        adjustMotors(lastSide + lastFront);
     }
 }
 
@@ -98,54 +135,58 @@ float usReadCm() {
         distance = MAX_DISTANCE;
     }
 
-    Serial.println(distance);
-
     return distance;
 }
 
-float runPid(float curDistance) {
-    float error = curDistance - TARGET;
+bool checkSide() {
+    unsigned long curMillis = millis();
+    if (headDoneMoving || (!headDoneMoving && curMillis > headMoveStart + HEAD_MOVE_DURATION)) {
+        headDoneMoving = true;
+        float curDistance = usReadCm();
+        float error = curDistance - TARGET;
 
-    float pidCalculation = 0;
+        float pidCalculation = 0;
 
-    if (P_ON) {
-        pidCalculation += K_P * error;
-    }
-
-    if (I_ON) {
-        errorSum += error;
-        if (errorSum > INTEGRAL_THRESHOLD) {
-            errorSum = INTEGRAL_THRESHOLD;
-        } else if (errorSum < -1 * INTEGRAL_THRESHOLD) {
-            errorSum = -1 * INTEGRAL_THRESHOLD;
+        if (P_ON) {
+            pidCalculation += K_P * error;
         }
 
-        pidCalculation += K_I * errorSum;
-    }
+        // NOT USED
+        if (I_ON) {
+            errorSum += error;
+            if (errorSum > INTEGRAL_THRESHOLD) {
+                errorSum = INTEGRAL_THRESHOLD;
+            } else if (errorSum < -1 * INTEGRAL_THRESHOLD) {
+                errorSum = -1 * INTEGRAL_THRESHOLD;
+            }
 
-    if (D_ON) {
-        float dErr = error - prevError;
-        pidCalculation += K_D * dErr;
-        prevError = error;
-    }
+            pidCalculation += K_I * errorSum;
+        }
 
-    if (pidCalculation < PID_MIN) {
-        pidCalculation = PID_MIN;
-    } else if (pidCalculation > PID_MAX) {
-        pidCalculation = PID_MAX;
-    }
+        if (D_ON) {
+            float dErr = error - prevError;
+            pidCalculation += K_D * dErr;
+            prevError = error;
+        }
 
-    return pidCalculation;
+        if (pidCalculation < PID_MIN) {
+            pidCalculation = PID_MIN;
+        } else if (pidCalculation > PID_MAX) {
+            pidCalculation = PID_MAX;
+        }
+
+        lastSide = pidCalculation;
+        return true;
+    } else {
+        return false;
+    }
 }
 
-void checkFront() {
+float checkFront() {
     float curMillis = millis();
-    if (curMillis >= prevHeadMillis + HEAD_PERIOD) {
-        headServo.write(FRONT_POSITION);
-        delay(200);
-
+    if (headDoneMoving || (!headDoneMoving && curMillis > headMoveStart + HEAD_MOVE_DURATION)) {
+        headDoneMoving = true;
         float distanceAhead = usReadCm();
-        // Serial.println(distanceAhead);
         float error = distanceAhead - TARGET_FRONT;
         if (error < 0) {
             error *= -1;
@@ -154,13 +195,13 @@ void checkFront() {
         }
         // We want the inverse error, so closer to the target means more action
         error = TARGET_FRONT - error;
-        Serial.println(error);
         
         pidAdjustment = -1 * K_P_FRONT * error;        
 
-        headServo.write(SIDE_POSITION);
-        delay(200);
-        prevHeadMillis = curMillis;
+        lastFront = pidAdjustment;
+        return true;
+    } else {
+        return false;
     }
 }
 
