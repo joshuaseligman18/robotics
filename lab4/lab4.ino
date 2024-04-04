@@ -1,5 +1,4 @@
 #include <Pololu3piPlus32U4.h>
-#include <Servo.h>
 
 using namespace Pololu3piPlus32U4;
 
@@ -22,17 +21,18 @@ const float CLICKS_PER_REVOLUTION = COUNTS_PER_REVOLUTION * GEAR_RATIO;
 const float WHEEL_DIAMETER = 3.2;
 const float WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * M_PI;
 
-const float DISTANCE_BETWEEN_WHEELS = 8.5f;
+const float DISTANCE_BETWEEN_WHEELS = 8.3f;
 
 const int BASE_SPEED = 75;
 const int SPEED_RANGE = 30;
 
-const unsigned int NUM_GOALS = 4;
+const unsigned int NUM_GOALS = 5;
 const float GOALS[NUM_GOALS][2] = { 
-    { 38.48f, 55.88f },
-    { -72.39f, 24.13f },
-    {  68.58f, -50.8f },
-    {  0.0f, 0.0f }
+    { 15.875f, 55.88f },
+    { -22.86f, -65.58f },
+    { -30.48f, 15.24f},
+    { 45.72f, -20.32f },
+    { 0.0f, 0.0f }
 };
 unsigned int goal = 0;
 bool atGoal = false;
@@ -50,6 +50,9 @@ void loop() {
         adjustMotors();
         checkGoal();
         prevMillis = curMillis;
+    } else if (goal >= NUM_GOALS) {
+        buzzer.play("g32");
+        delay(1000);
     }
 }
 
@@ -68,27 +71,23 @@ void updatePosition() {
     x += deltaX;
     y += deltaY;
     theta += deltaTheta;
-    if (theta > M_PI) {
-        theta -= 2 * M_PI;
-    } else if (theta < -1 * M_PI) {
-        theta += 2 * M_PI;
-    }
+    theta = normalizeAngle(theta);
 }
 
 void adjustMotors() {
     float targetTheta = atan2(GOALS[goal][1] - y, GOALS[goal][0] - x);
 
-    if (theta > 0 && targetTheta < 0) {
+    if (theta > targetTheta && theta / targetTheta < 0) {
         targetTheta += 2 * M_PI;
-    } else if (theta < 0 && targetTheta > 0) {
+    } else if (theta < targetTheta && theta / targetTheta < 0) {
         targetTheta -= 2 * M_PI;
     }
 
-    float eTheta = theta - targetTheta;
+    float eTheta = normalizeAngle(theta - targetTheta);
     float distanceToGoal = computeDistanceToGoal();
 
     int motorSpeed;
-    if (distanceToGoal > 0.1) {
+    if (distanceToGoal > 0.25) {
         // Slow down the robot as it approaches the target
         if (distanceToGoal < 10) {
             motorSpeed *= distanceToGoal / 10;
@@ -120,14 +119,23 @@ float computeDistanceToGoal() {
 
 void checkGoal() {
     if (atGoal) {
-        Serial.print("X: ");
-        Serial.print(x);
-        Serial.print("; Y: ");
-        Serial.println(y);
-
-        buzzer.play("c32");
-        delay(1000);
         goal++;
+        if (goal == NUM_GOALS) {
+            buzzer.play("g32");
+        } else {
+            buzzer.play("c32");
+        }
+        delay(1000);
         atGoal = false;
     }
+}
+
+float normalizeAngle(float angle) {
+    if (angle < -1 * M_PI) {
+        angle += 2 * M_PI;
+    } else if (angle > M_PI) {
+        angle -= 2 * M_PI;
+    }
+
+    return angle;
 }
