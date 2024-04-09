@@ -21,21 +21,22 @@ const float CLICKS_PER_REVOLUTION = COUNTS_PER_REVOLUTION * GEAR_RATIO;
 const float WHEEL_DIAMETER = 3.2;
 const float WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * M_PI;
 
-const float DISTANCE_BETWEEN_WHEELS = 8.3f;
+const float DISTANCE_BETWEEN_WHEELS = 8.5f;
 
-const int BASE_SPEED = 75;
+const int BASE_SPEED = 100;
 const int SPEED_RANGE = 30;
 
-const unsigned int NUM_GOALS = 5;
+const unsigned int NUM_GOALS = 4;
 const float GOALS[NUM_GOALS][2] = { 
-    { 15.875f, 55.88f },
-    { -22.86f, -65.58f },
-    { -30.48f, 15.24f},
-    { 45.72f, -20.32f },
+    { 80.0f, 50.0f },
+    { 60.0f, 0.0f },
+    { -30.0f, 0.0f },
     { 0.0f, 0.0f }
 };
 unsigned int goal = 0;
 bool atGoal = false;
+
+const float K_P = 2.0f;
 
 void setup() {
     Serial.begin(57600);
@@ -70,8 +71,7 @@ void updatePosition() {
 
     x += deltaX;
     y += deltaY;
-    theta += deltaTheta;
-    theta = normalizeAngle(theta);
+    theta = normalizeAngle(theta + deltaTheta);
 }
 
 void adjustMotors() {
@@ -84,13 +84,14 @@ void adjustMotors() {
     }
 
     float eTheta = normalizeAngle(theta - targetTheta);
-    float distanceToGoal = computeDistanceToGoal();
+    float distanceToGoal =
+        sqrt(pow(GOALS[goal][0] - x, 2) + pow(GOALS[goal][1] - y, 2));
 
     int motorSpeed;
     if (distanceToGoal > 0.25) {
         // Slow down the robot as it approaches the target
         if (distanceToGoal < 10) {
-            motorSpeed *= distanceToGoal / 10;
+            motorSpeed *= distanceToGoal / 5;
 
             // Keep a minimum speed for the robot so it doesn't stall
             if (motorSpeed < 30) {
@@ -105,16 +106,12 @@ void adjustMotors() {
     }
 
     if (motorSpeed != 0) {
-        int leftSpeed = eTheta * SPEED_RANGE + motorSpeed;
+        int leftSpeed = K_P * eTheta * SPEED_RANGE + motorSpeed;
         int rightSpeed = motorSpeed - (leftSpeed - motorSpeed);
         motors.setSpeeds(leftSpeed, rightSpeed);
     } else {
         motors.setSpeeds(0, 0);
     }
-}
-
-float computeDistanceToGoal() {
-    return sqrt(pow(GOALS[goal][0] - x, 2) + pow(GOALS[goal][1] - y, 2));
 }
 
 void checkGoal() {
