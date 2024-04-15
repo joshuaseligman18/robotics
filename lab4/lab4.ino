@@ -28,9 +28,9 @@ const int SPEED_RANGE = 30;
 
 const unsigned int NUM_GOALS = 4;
 const float GOALS[NUM_GOALS][2] = { 
-    { 80.0f, 50.0f },
-    { 60.0f, 0.0f },
-    { -30.0f, 0.0f },
+    { 60.0f, 30.0f },
+    { 0.0f, -50.0f },
+    { -90.0f, 0.0f },
     { 0.0f, 0.0f }
 };
 unsigned int goal = 0;
@@ -77,6 +77,7 @@ void updatePosition() {
 void adjustMotors() {
     float targetTheta = atan2(GOALS[goal][1] - y, GOALS[goal][0] - x);
 
+    // Bring target theta to have the same sign as theta
     if (theta > targetTheta && theta / targetTheta < 0) {
         targetTheta += 2 * M_PI;
     } else if (theta < targetTheta && theta / targetTheta < 0) {
