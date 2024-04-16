@@ -13,10 +13,12 @@ const int HEAD_SERVO_PIN = 22;
 const int ECHO_PIN = 4;
 const int TRIG_PIN = 5;
 
+const bool SERVO_ON = false;
+
 unsigned long prevPfMillis = 0;
 const unsigned long PF_PERIOD = 10;
 unsigned long prevServoMillis = 0;
-const unsigned long SERVO_PERIOD = 200;
+const unsigned long SERVO_PERIOD = 150;
 
 float theta = M_PI_2;
 float x = 0.0f;
@@ -34,18 +36,23 @@ const float DISTANCE_BETWEEN_WHEELS = 8.5f;
 
 const int BASE_SPEED = 100;
 
-const float GOAL[2] = { -30.48f, 91.44f };
+const int NUM_GOALS = 2;
+const float GOALS[NUM_GOALS][2] = {
+    { 30.48f, 152.4f },
+    { 0.0f, 0.0f }
+};
+int goalIndex = 0;
 bool atGoal = false;
 
-const float MAX_DISTANCE = 100.0f;
+const float MAX_DISTANCE = 150.0f;
 const int NUM_POSITIONS = 5;
 float measurements[NUM_POSITIONS] = { MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE };
 const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0f };
 int headIndex = 2;
 bool headMovingRight = true;
 
-const float K_P = 120.0f;
-const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.025f, 0.25f, 0.75f, 0.25f, 0.025f };
+const float K_P = 100.0f;
+const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.5f, 1.25f, 2.5f, 1.25f, 0.5f };
 
 void setup() {
     Serial.begin(57600);
@@ -67,14 +74,12 @@ void setup() {
 void loop() {
     unsigned long curMillis = millis();
     if (curMillis >= prevPfMillis + PF_PERIOD) {
-        if (!atGoal) {
+        if (goalIndex < NUM_GOALS) {
             updatePosition();
             runHeadCalculation();
             runPotentialFields();
-        } else {
-            buzzer.play("g32");
-            delay(1000);
         }
+        checkGoal();
         prevPfMillis = curMillis;
     }
 }
@@ -120,7 +125,7 @@ float usReadCm() {
 }
 
 void runPotentialFields() {
-    float targetTheta = atan2(GOAL[1] - y, GOAL[0] - x);
+    float targetTheta = atan2(GOALS[goalIndex][1] - y, GOALS[goalIndex][0] - x);
 
     // Bring target theta to have the same sign as theta
     if (theta > targetTheta && theta / targetTheta < 0) {
@@ -131,17 +136,22 @@ void runPotentialFields() {
 
     float eTheta = normalizeAngle(theta - targetTheta);
     float distanceToGoal =
-        sqrt(pow(GOAL[0] - x, 2) + pow(GOAL[1] - y, 2));
+        sqrt(pow(GOALS[goalIndex][0] - x, 2) + pow(GOALS[goalIndex][1] - y, 2));
 
     
     float pfCalculation = eTheta * K_P;
 
-    for (int i = 0; i < NUM_POSITIONS; i++) { 
-        float adjustment = (MAX_DISTANCE - measurements[i]) * POSITION_MULTIPLIERS[i];
-        if (i <= 2) {
-            pfCalculation += adjustment;
-        } else {
-            pfCalculation -= adjustment;
+    if (SERVO_ON) {
+        for (int i = 0; i < NUM_POSITIONS; i++) { 
+            float adjustment = (MAX_DISTANCE - measurements[i]) * POSITION_MULTIPLIERS[i];
+            if (distanceToGoal < measurements[i]) {
+                adjustment /= 15;
+            }
+            if (i <= 2) {
+                pfCalculation += adjustment;
+            } else {
+                pfCalculation -= adjustment;
+            }
         }
     }
 
@@ -151,8 +161,8 @@ void runPotentialFields() {
     if (distanceToGoal > 1.0f) {
         // Slow down the robot as it approaches the target
         if (distanceToGoal < 10) {
-            leftSpeed *= distanceToGoal / 15;
-            rightSpeed *= distanceToGoal / 15;
+            leftSpeed *= distanceToGoal / 10;
+            rightSpeed *= distanceToGoal / 10;
 
             // Keep a minimum speed for the robot so it doesn't stall
             if (leftSpeed < 30) {
@@ -173,11 +183,13 @@ void runPotentialFields() {
 }
 
 void runHeadCalculation() {
-    unsigned long curMillis = millis();
-    if (curMillis >= prevServoMillis + SERVO_PERIOD) {
-        measurements[headIndex] = usReadCm();
-        moveHeadToNextPosition();
-        prevServoMillis = curMillis;
+    if (SERVO_ON) {
+        unsigned long curMillis = millis();
+        if (curMillis >= prevServoMillis + SERVO_PERIOD) {
+            measurements[headIndex] = usReadCm();
+            moveHeadToNextPosition();
+            prevServoMillis = curMillis;
+        }
     }
 }
 
@@ -208,12 +220,31 @@ float normalizeAngle(float angle) {
 }
 
 void runInitialScan() {
-    for (int i = 0; i < NUM_POSITIONS; i++) {
-        headServo.write(HEAD_POSITIONS[i]);
+    if (SERVO_ON) {
+        for (int i = 0; i < NUM_POSITIONS; i++) {
+            headServo.write(HEAD_POSITIONS[i]);
+            delay(SERVO_PERIOD);
+            measurements[i] = usReadCm();
+        }
+        headIndex = 2;
+        headServo.write(HEAD_POSITIONS[headIndex]);
         delay(SERVO_PERIOD);
-        measurements[i] = usReadCm();
     }
-    headIndex = 2;
-    headServo.write(HEAD_POSITIONS[headIndex]);
-    delay(SERVO_PERIOD);
+}
+
+void checkGoal() {
+    if (atGoal) {
+        if (goalIndex < NUM_GOALS) {
+            goalIndex++;
+        }
+
+        if (goalIndex == NUM_GOALS) {
+            buzzer.play("g32");
+        } else {
+            buzzer.play("c32");
+            atGoal = false;
+        }
+
+        delay(1000);
+    }
 }
