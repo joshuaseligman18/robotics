@@ -13,8 +13,10 @@ const int HEAD_SERVO_PIN = 22;
 const int ECHO_PIN = 4;
 const int TRIG_PIN = 5;
 
-unsigned long prevMillis = 0;
-const unsigned long PERIOD = 25;
+unsigned long prevPfMillis = 0;
+const unsigned long PF_PERIOD = 10;
+unsigned long prevServoMillis = 0;
+const unsigned long SERVO_PERIOD = 200;
 
 float theta = M_PI_2;
 float x = 0.0f;
@@ -32,18 +34,18 @@ const float DISTANCE_BETWEEN_WHEELS = 8.5f;
 
 const int BASE_SPEED = 100;
 
-const float GOAL[2] = { 30.0f, 15.0f };
+const float GOAL[2] = { -30.48f, 15.24f };
 bool atGoal = false;
 
-const float MAX_DISTANCE = 300.0f;
+const float MAX_DISTANCE = 100.0f;
 const int NUM_POSITIONS = 5;
 float measurements[NUM_POSITIONS] = { MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE };
 const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0f };
 int headIndex = 2;
 bool headMovingRight = true;
 
-const float K_P = 5.0f;
-const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.1f, 0.25f, 1.0f, 0.25f, 0.1f };
+const float K_P = 60.0f;
+const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.025f, 0.1f, 0.35f, 0.1f, 0.025f };
 
 void setup() {
     Serial.begin(57600);
@@ -56,23 +58,30 @@ void setup() {
     pinMode(ECHO_PIN, INPUT);
     pinMode(TRIG_PIN, OUTPUT);
 
+    runInitialScan();
+
     delay(1000);
     buzzer.play("c32");
 }
 
 void loop() {
     unsigned long curMillis = millis();
-    if (curMillis >= prevMillis + PERIOD) {
-        updatePosition();
-        runPotentialFields();
-        // moveHeadToNextPosition();
-        prevMillis = curMillis;
+    if (curMillis >= prevPfMillis + PF_PERIOD) {
+        if (!atGoal) {
+            updatePosition();
+            runHeadCalculation();
+            runPotentialFields();
+        } else {
+            buzzer.play("g32");
+            delay(1000);
+        }
+        prevPfMillis = curMillis;
     }
 }
 
 void updatePosition() {
-    long countsLeft = encoders.getCountsAndResetLeft();
-    long countsRight = encoders.getCountsAndResetRight();
+    long countsLeft = -1 * encoders.getCountsAndResetRight();
+    long countsRight = -1 * encoders.getCountsAndResetLeft();
     float deltaLeft = countsLeft * WHEEL_CIRCUMFERENCE / CLICKS_PER_REVOLUTION;
     float deltaRight = countsRight * WHEEL_CIRCUMFERENCE / CLICKS_PER_REVOLUTION;
 
@@ -111,8 +120,6 @@ float usReadCm() {
 }
 
 void runPotentialFields() {
-    // measurements[headIndex] = usReadCm();
-
     float targetTheta = atan2(GOAL[1] - y, GOAL[0] - x);
 
     // Bring target theta to have the same sign as theta
@@ -126,52 +133,67 @@ void runPotentialFields() {
     float distanceToGoal =
         sqrt(pow(GOAL[0] - x, 2) + pow(GOAL[1] - y, 2));
 
-
-    int leftSpeed = BASE_SPEED;
-
-    float thetaAdjustment = eTheta * K_P;
-    if (eTheta > 0) {
-        leftSpeed += thetaAdjustment;
-    } else {
-        leftSpeed -= thetaAdjustment;
-    }
+    
+    float pfCalculation = eTheta * K_P;
 
     for (int i = 0; i < NUM_POSITIONS; i++) { 
         float adjustment = (MAX_DISTANCE - measurements[i]) * POSITION_MULTIPLIERS[i];
         if (i <= 2) {
-            leftSpeed += adjustment;
+            pfCalculation += adjustment;
         } else {
-            leftSpeed -= adjustment;
+            pfCalculation -= adjustment;
         }
     }
 
-    if (distanceToGoal > 0.25) {
+    int leftSpeed = BASE_SPEED + pfCalculation;
+    int rightSpeed = BASE_SPEED - pfCalculation;
+
+    if (distanceToGoal > 1.0f) {
         // Slow down the robot as it approaches the target
         if (distanceToGoal < 10) {
-            leftSpeed *= distanceToGoal / 5;
+            leftSpeed *= distanceToGoal / 15;
+            rightSpeed *= distanceToGoal / 15;
 
             // Keep a minimum speed for the robot so it doesn't stall
             if (leftSpeed < 30) {
                 leftSpeed = 30;
             }
+
+            if (rightSpeed < 30) {
+                rightSpeed = 30;
+            }
         }
     } else {
         leftSpeed = 0;
+        rightSpeed = 0;
         atGoal = true;
     }
 
-    int rightSpeed;
-    if (leftSpeed != 0) {
-        rightSpeed = BASE_SPEED - (leftSpeed - BASE_SPEED);
-    } else {
-        rightSpeed = 0;
-    }
     Serial.print("Left: ");
-    Serial.print(-rightSpeed);
+    Serial.print(leftSpeed);
     Serial.print("; Right: ");
-    Serial.println(-leftSpeed);
+    Serial.print(rightSpeed);
+    Serial.print("; X: ");
+    Serial.print(x);
+    Serial.print("; Y: ");
+    Serial.print(y);
+    Serial.print("; T: ");
+    Serial.print(theta);
+    Serial.print("; TT: ");
+    Serial.print(targetTheta);
+    Serial.print("; Distance: ");
+    Serial.println(distanceToGoal);
 
     motors.setSpeeds(-rightSpeed, -leftSpeed);
+}
+
+void runHeadCalculation() {
+    unsigned long curMillis = millis();
+    if (curMillis >= prevServoMillis + SERVO_PERIOD) {
+        measurements[headIndex] = usReadCm();
+        moveHeadToNextPosition();
+        prevServoMillis = curMillis;
+    }
 }
 
 void moveHeadToNextPosition() {
@@ -198,4 +220,15 @@ float normalizeAngle(float angle) {
     }
 
     return angle;
+}
+
+void runInitialScan() {
+    for (int i = 0; i < NUM_POSITIONS; i++) {
+        headServo.write(HEAD_POSITIONS[i]);
+        delay(SERVO_PERIOD);
+        measurements[i] = usReadCm();
+    }
+    headIndex = 2;
+    headServo.write(HEAD_POSITIONS[headIndex]);
+    delay(SERVO_PERIOD);
 }
