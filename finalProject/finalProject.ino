@@ -34,7 +34,7 @@ const float DISTANCE_BETWEEN_WHEELS = 8.5f;
 
 const int BASE_SPEED = 100;
 
-const float GOAL[2] = { -30.48f, 15.24f };
+const float GOAL[2] = { -30.48f, 91.44f };
 bool atGoal = false;
 
 const float MAX_DISTANCE = 100.0f;
@@ -44,8 +44,8 @@ const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0
 int headIndex = 2;
 bool headMovingRight = true;
 
-const float K_P = 60.0f;
-const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.025f, 0.1f, 0.35f, 0.1f, 0.025f };
+const float K_P = 120.0f;
+const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.025f, 0.25f, 0.75f, 0.25f, 0.025f };
 
 void setup() {
     Serial.begin(57600);
@@ -168,21 +168,6 @@ void runPotentialFields() {
         rightSpeed = 0;
         atGoal = true;
     }
-
-    Serial.print("Left: ");
-    Serial.print(leftSpeed);
-    Serial.print("; Right: ");
-    Serial.print(rightSpeed);
-    Serial.print("; X: ");
-    Serial.print(x);
-    Serial.print("; Y: ");
-    Serial.print(y);
-    Serial.print("; T: ");
-    Serial.print(theta);
-    Serial.print("; TT: ");
-    Serial.print(targetTheta);
-    Serial.print("; Distance: ");
-    Serial.println(distanceToGoal);
 
     motors.setSpeeds(-rightSpeed, -leftSpeed);
 }
