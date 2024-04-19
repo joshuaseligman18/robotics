@@ -13,12 +13,12 @@ const int HEAD_SERVO_PIN = 22;
 const int ECHO_PIN = 4;
 const int TRIG_PIN = 5;
 
-const bool SERVO_ON = false;
+const bool SERVO_ON = true;
 
 unsigned long prevPfMillis = 0;
 const unsigned long PF_PERIOD = 10;
 unsigned long prevServoMillis = 0;
-const unsigned long SERVO_PERIOD = 150;
+const unsigned long SERVO_PERIOD = 200;
 
 float theta = M_PI_2;
 float x = 0.0f;
@@ -32,13 +32,13 @@ const float CLICKS_PER_REVOLUTION = COUNTS_PER_REVOLUTION * GEAR_RATIO;
 const float WHEEL_DIAMETER = 3.2;
 const float WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * M_PI;
 
-const float DISTANCE_BETWEEN_WHEELS = 8.5f;
+const float DISTANCE_BETWEEN_WHEELS = 8.4f;
 
 const int BASE_SPEED = 100;
 
 const int NUM_GOALS = 2;
 const float GOALS[NUM_GOALS][2] = {
-    { 30.48f, 152.4f },
+    { -60.96f, 182.9f },
     { 0.0f, 0.0f }
 };
 int goalIndex = 0;
@@ -49,10 +49,12 @@ const int NUM_POSITIONS = 5;
 float measurements[NUM_POSITIONS] = { MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE };
 const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0f };
 int headIndex = 2;
-bool headMovingRight = true;
 
-const float K_P = 100.0f;
-const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { 0.5f, 1.25f, 2.5f, 1.25f, 0.5f };
+const float K_P = 30.0f;
+const float K_SIDE = 0.02f;
+const float K_MID = 0.2f;
+const float K_FRONT = 0.6f;
+const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { K_SIDE, K_MID, K_FRONT, K_MID, K_SIDE };
 
 void setup() {
     Serial.begin(57600);
@@ -120,6 +122,8 @@ float usReadCm() {
     } else if (distance == 0) {
         distance = MAX_DISTANCE;
     }
+    
+    Serial.println(distance);
 
     return distance;
 }
@@ -145,7 +149,7 @@ void runPotentialFields() {
         for (int i = 0; i < NUM_POSITIONS; i++) { 
             float adjustment = (MAX_DISTANCE - measurements[i]) * POSITION_MULTIPLIERS[i];
             if (distanceToGoal < measurements[i]) {
-                adjustment /= 15;
+                adjustment /= 50;
             }
             if (i <= 2) {
                 pfCalculation += adjustment;
@@ -158,7 +162,7 @@ void runPotentialFields() {
     int leftSpeed = BASE_SPEED + pfCalculation;
     int rightSpeed = BASE_SPEED - pfCalculation;
 
-    if (distanceToGoal > 1.0f) {
+    if (distanceToGoal > 1.5f) {
         // Slow down the robot as it approaches the target
         if (distanceToGoal < 10) {
             leftSpeed *= distanceToGoal / 10;
@@ -194,16 +198,9 @@ void runHeadCalculation() {
 }
 
 void moveHeadToNextPosition() {
-    if (headMovingRight) {
-        headIndex++;
-        if (headIndex == NUM_POSITIONS - 1) {
-            headMovingRight = false;
-        }
-    } else {
-        headIndex--;
-        if (headIndex == 0) {
-            headMovingRight = true;
-        }
+    headIndex++;
+    if (headIndex == NUM_POSITIONS) {
+        headIndex = 0;
     }
     headServo.write(HEAD_POSITIONS[headIndex]);
 }
