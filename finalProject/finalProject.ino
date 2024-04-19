@@ -32,28 +32,28 @@ const float CLICKS_PER_REVOLUTION = COUNTS_PER_REVOLUTION * GEAR_RATIO;
 const float WHEEL_DIAMETER = 3.2;
 const float WHEEL_CIRCUMFERENCE = WHEEL_DIAMETER * M_PI;
 
-const float DISTANCE_BETWEEN_WHEELS = 8.4f;
+const float DISTANCE_BETWEEN_WHEELS = 8.5f;
 
 const int BASE_SPEED = 100;
 
 const int NUM_GOALS = 2;
 const float GOALS[NUM_GOALS][2] = {
-    { -60.96f, 182.9f },
+    { 0.0f, 182.9f },
     { 0.0f, 0.0f }
 };
 int goalIndex = 0;
 bool atGoal = false;
 
-const float MAX_DISTANCE = 150.0f;
+const float MAX_DISTANCE = 100.0f;
 const int NUM_POSITIONS = 5;
 float measurements[NUM_POSITIONS] = { MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE, MAX_DISTANCE };
 const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0f };
 int headIndex = 2;
 
-const float K_P = 30.0f;
-const float K_SIDE = 0.02f;
-const float K_MID = 0.2f;
-const float K_FRONT = 0.6f;
+const float K_P = 45.0f;
+const float K_SIDE = 0.0275f;
+const float K_MID = 0.29f;
+const float K_FRONT = 0.8f;
 const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { K_SIDE, K_MID, K_FRONT, K_MID, K_SIDE };
 
 void setup() {
@@ -146,15 +146,28 @@ void runPotentialFields() {
     float pfCalculation = eTheta * K_P;
 
     if (SERVO_ON) {
+        float adjustments[NUM_POSITIONS] = { 0, 0, 0, 0, 0 };
         for (int i = 0; i < NUM_POSITIONS; i++) { 
             float adjustment = (MAX_DISTANCE - measurements[i]) * POSITION_MULTIPLIERS[i];
             if (distanceToGoal < measurements[i]) {
                 adjustment /= 50;
             }
-            if (i <= 2) {
-                pfCalculation += adjustment;
+            adjustments[i] = adjustment;
+        }
+
+        for (int i = 0; i < NUM_POSITIONS; i++) {
+            if (i < 2) {
+                pfCalculation += adjustments[i];
+            } else if (i > 2) {
+                pfCalculation -= adjustments[i];
             } else {
-                pfCalculation -= adjustment;
+                float leftWeight = adjustments[0] + adjustments[1];
+                float rightWeight = adjustments[3] + adjustments[4];
+                if (leftWeight >= rightWeight) {
+                    pfCalculation += adjustments[i];
+                } else {
+                    pfCalculation -= adjustments[i];
+                }
             }
         }
     }
