@@ -3,6 +3,12 @@
 
 using namespace Pololu3piPlus32U4;
 
+enum class CheckRange {
+    Full,
+    Left,
+    Right
+};
+
 Buzzer buzzer;
 Motors motors;
 Encoders encoders;
@@ -18,7 +24,7 @@ const bool SERVO_ON = true;
 unsigned long prevPfMillis = 0;
 const unsigned long PF_PERIOD = 10;
 unsigned long prevServoMillis = 0;
-const unsigned long SERVO_PERIOD = 200;
+const unsigned long SERVO_PERIOD = 150;
 
 float theta = M_PI_2;
 float x = 0.0f;
@@ -55,6 +61,10 @@ const float K_SIDE = 0.0275f;
 const float K_MID = 0.29f;
 const float K_FRONT = 0.8f;
 const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { K_SIDE, K_MID, K_FRONT, K_MID, K_SIDE };
+
+CheckRange checkRange = CheckRange::Full;
+const float CHECK_THRESHOLD = 30.48f * 3.5f;
+const float K_SIDE_CHECK = 1.75f;
 
 void setup() {
     Serial.begin(57600);
@@ -157,16 +167,34 @@ void runPotentialFields() {
 
         for (int i = 0; i < NUM_POSITIONS; i++) {
             if (i < 2) {
-                pfCalculation += adjustments[i];
-            } else if (i > 2) {
-                pfCalculation -= adjustments[i];
-            } else {
-                float leftWeight = adjustments[0] + adjustments[1];
-                float rightWeight = adjustments[3] + adjustments[4];
-                if (leftWeight >= rightWeight) {
+                if (checkRange == CheckRange::Left) {
+                    pfCalculation += K_SIDE_CHECK * adjustments[i];
+                } else {
                     pfCalculation += adjustments[i];
+                }
+            } else if (i > 2) {
+                if (checkRange == CheckRange::Right) {
+                    pfCalculation -= K_SIDE_CHECK * adjustments[i];
                 } else {
                     pfCalculation -= adjustments[i];
+                }
+            } else {
+                switch (checkRange) {
+                    case CheckRange::Left:
+                        pfCalculation += adjustments[i];
+                        break;
+                    case CheckRange::Right:
+                        pfCalculation -= adjustments[i];
+                        break;
+                    case CheckRange::Full:
+                        float leftWeight = adjustments[0] + adjustments[1];
+                        float rightWeight = adjustments[3] + adjustments[4];
+                        if (leftWeight >= rightWeight) {
+                            pfCalculation += adjustments[i];
+                        } else {
+                            pfCalculation -= adjustments[i];
+                        }
+                        break;
                 }
             }
         }
@@ -204,6 +232,7 @@ void runHeadCalculation() {
         unsigned long curMillis = millis();
         if (curMillis >= prevServoMillis + SERVO_PERIOD) {
             measurements[headIndex] = usReadCm();
+            updateCheckRange();
             moveHeadToNextPosition();
             prevServoMillis = curMillis;
         }
@@ -212,8 +241,22 @@ void runHeadCalculation() {
 
 void moveHeadToNextPosition() {
     headIndex++;
-    if (headIndex == NUM_POSITIONS) {
-        headIndex = 0;
+    switch (checkRange) {
+        case CheckRange::Full:
+            if (headIndex == NUM_POSITIONS) {
+                headIndex = 0;
+            }
+            break;
+        case CheckRange::Left:
+            if (headIndex >= 3) {
+                headIndex = 0;
+            }
+            break;
+        case CheckRange::Right:
+            if (headIndex == NUM_POSITIONS) {
+                headIndex = 2;
+            }
+            break;
     }
     headServo.write(HEAD_POSITIONS[headIndex]);
 }
@@ -256,5 +299,19 @@ void checkGoal() {
         }
 
         delay(1000);
+    }
+}
+
+void updateCheckRange() {
+    float leftSum = measurements[0] + measurements[1];
+    float rightSum = measurements[3] + measurements[4];
+
+    float diff = leftSum - rightSum;
+    if (diff <= -1 * CHECK_THRESHOLD) {
+        checkRange = CheckRange::Left;
+    } else if (diff >= CHECK_THRESHOLD) {
+        checkRange = CheckRange::Right;
+    } else {
+        checkRange = CheckRange::Full;
     }
 }
