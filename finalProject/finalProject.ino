@@ -24,7 +24,7 @@ const bool SERVO_ON = true;
 unsigned long prevPfMillis = 0;
 const unsigned long PF_PERIOD = 10;
 unsigned long prevServoMillis = 0;
-const unsigned long SERVO_PERIOD = 150;
+const unsigned long SERVO_PERIOD = 175;
 
 float theta = M_PI_2;
 float x = 0.0f;
@@ -44,7 +44,7 @@ const int BASE_SPEED = 100;
 
 const int NUM_GOALS = 2;
 const float GOALS[NUM_GOALS][2] = {
-    { 0.0f, 182.9f },
+    { 30.48f, 182.9f },
     { 0.0f, 0.0f }
 };
 int goalIndex = 0;
@@ -57,14 +57,14 @@ const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0
 int headIndex = 2;
 
 const float K_P = 45.0f;
-const float K_SIDE = 0.0275f;
-const float K_MID = 0.29f;
-const float K_FRONT = 0.8f;
+const float K_SIDE = 0.029f;
+const float K_MID = 0.30f;
+const float K_FRONT = 0.85f;
 const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { K_SIDE, K_MID, K_FRONT, K_MID, K_SIDE };
 
 CheckRange checkRange = CheckRange::Full;
 const float CHECK_THRESHOLD = 30.48f * 3.5f;
-const float K_SIDE_CHECK = 1.75f;
+const float K_SIDE_CHECK = 1.775f;
 
 void setup() {
     Serial.begin(57600);
@@ -198,6 +198,17 @@ void runPotentialFields() {
                 }
             }
         }
+
+        switch (getClosestIndex()) {
+            case 0:
+                pfCalculation += adjustments[0];
+            case 1:
+                pfCalculation += 0.5f * adjustments[1];
+            case 3:
+                pfCalculation -= 0.5f * adjustments[3];
+            case 4:
+                pfCalculation -= adjustments[4];
+        }
     }
 
     int leftSpeed = BASE_SPEED + pfCalculation;
@@ -314,4 +325,16 @@ void updateCheckRange() {
     } else {
         checkRange = CheckRange::Full;
     }
+}
+
+int getClosestIndex() {
+    int lowestIndex = -1;
+    for (int i = 0; i < NUM_POSITIONS; i++) {
+        if (measurements[i] < 10.0f) {
+            if (lowestIndex == -1 || measurements[i] < measurements[lowestIndex]) {
+                lowestIndex = i;
+            }
+        }
+    }
+    return lowestIndex;
 }
