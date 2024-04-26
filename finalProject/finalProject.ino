@@ -3,6 +3,12 @@
 
 using namespace Pololu3piPlus32U4;
 
+enum class CheckRange {
+    Full,
+    Left,
+    Right
+};
+
 Buzzer buzzer;
 Motors motors;
 Encoders encoders;
@@ -18,7 +24,7 @@ const bool SERVO_ON = true;
 unsigned long prevPfMillis = 0;
 const unsigned long PF_PERIOD = 10;
 unsigned long prevServoMillis = 0;
-const unsigned long SERVO_PERIOD = 200;
+const unsigned long SERVO_PERIOD = 175;
 
 float theta = M_PI_2;
 float x = 0.0f;
@@ -38,7 +44,7 @@ const int BASE_SPEED = 100;
 
 const int NUM_GOALS = 2;
 const float GOALS[NUM_GOALS][2] = {
-    { 0.0f, 182.9f },
+    { 30.48f, 182.9f },
     { 0.0f, 0.0f }
 };
 int goalIndex = 0;
@@ -51,10 +57,14 @@ const float HEAD_POSITIONS[NUM_POSITIONS] = { 120.0f, 105.0f, 90.0f, 75.0f, 60.0
 int headIndex = 2;
 
 const float K_P = 45.0f;
-const float K_SIDE = 0.0275f;
-const float K_MID = 0.29f;
-const float K_FRONT = 0.8f;
+const float K_SIDE = 0.029f;
+const float K_MID = 0.30f;
+const float K_FRONT = 0.85f;
 const float POSITION_MULTIPLIERS[NUM_POSITIONS] = { K_SIDE, K_MID, K_FRONT, K_MID, K_SIDE };
+
+CheckRange checkRange = CheckRange::Full;
+const float CHECK_THRESHOLD = 30.48f * 3.5f;
+const float K_SIDE_CHECK = 1.775f;
 
 void setup() {
     Serial.begin(57600);
@@ -157,18 +167,47 @@ void runPotentialFields() {
 
         for (int i = 0; i < NUM_POSITIONS; i++) {
             if (i < 2) {
-                pfCalculation += adjustments[i];
-            } else if (i > 2) {
-                pfCalculation -= adjustments[i];
-            } else {
-                float leftWeight = adjustments[0] + adjustments[1];
-                float rightWeight = adjustments[3] + adjustments[4];
-                if (leftWeight >= rightWeight) {
+                if (checkRange == CheckRange::Left) {
+                    pfCalculation += K_SIDE_CHECK * adjustments[i];
+                } else {
                     pfCalculation += adjustments[i];
+                }
+            } else if (i > 2) {
+                if (checkRange == CheckRange::Right) {
+                    pfCalculation -= K_SIDE_CHECK * adjustments[i];
                 } else {
                     pfCalculation -= adjustments[i];
                 }
+            } else {
+                switch (checkRange) {
+                    case CheckRange::Left:
+                        pfCalculation += adjustments[i];
+                        break;
+                    case CheckRange::Right:
+                        pfCalculation -= adjustments[i];
+                        break;
+                    case CheckRange::Full:
+                        float leftWeight = adjustments[0] + adjustments[1];
+                        float rightWeight = adjustments[3] + adjustments[4];
+                        if (leftWeight >= rightWeight) {
+                            pfCalculation += adjustments[i];
+                        } else {
+                            pfCalculation -= adjustments[i];
+                        }
+                        break;
+                }
             }
+        }
+
+        switch (getClosestIndex()) {
+            case 0:
+                pfCalculation += adjustments[0];
+            case 1:
+                pfCalculation += 0.5f * adjustments[1];
+            case 3:
+                pfCalculation -= 0.5f * adjustments[3];
+            case 4:
+                pfCalculation -= adjustments[4];
         }
     }
 
@@ -204,6 +243,7 @@ void runHeadCalculation() {
         unsigned long curMillis = millis();
         if (curMillis >= prevServoMillis + SERVO_PERIOD) {
             measurements[headIndex] = usReadCm();
+            updateCheckRange();
             moveHeadToNextPosition();
             prevServoMillis = curMillis;
         }
@@ -212,8 +252,22 @@ void runHeadCalculation() {
 
 void moveHeadToNextPosition() {
     headIndex++;
-    if (headIndex == NUM_POSITIONS) {
-        headIndex = 0;
+    switch (checkRange) {
+        case CheckRange::Full:
+            if (headIndex == NUM_POSITIONS) {
+                headIndex = 0;
+            }
+            break;
+        case CheckRange::Left:
+            if (headIndex >= 3) {
+                headIndex = 0;
+            }
+            break;
+        case CheckRange::Right:
+            if (headIndex == NUM_POSITIONS) {
+                headIndex = 2;
+            }
+            break;
     }
     headServo.write(HEAD_POSITIONS[headIndex]);
 }
@@ -257,4 +311,30 @@ void checkGoal() {
 
         delay(1000);
     }
+}
+
+void updateCheckRange() {
+    float leftSum = measurements[0] + measurements[1];
+    float rightSum = measurements[3] + measurements[4];
+
+    float diff = leftSum - rightSum;
+    if (diff <= -1 * CHECK_THRESHOLD) {
+        checkRange = CheckRange::Left;
+    } else if (diff >= CHECK_THRESHOLD) {
+        checkRange = CheckRange::Right;
+    } else {
+        checkRange = CheckRange::Full;
+    }
+}
+
+int getClosestIndex() {
+    int lowestIndex = -1;
+    for (int i = 0; i < NUM_POSITIONS; i++) {
+        if (measurements[i] < 10.0f) {
+            if (lowestIndex == -1 || measurements[i] < measurements[lowestIndex]) {
+                lowestIndex = i;
+            }
+        }
+    }
+    return lowestIndex;
 }
