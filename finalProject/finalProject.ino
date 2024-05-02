@@ -42,12 +42,12 @@ const float DISTANCE_BETWEEN_WHEELS = 8.5f;
 
 const int BASE_SPEED = 100;
 
-const int NUM_GOALS = 2;
+const int NUM_GOALS = 1;
 const float GOALS[NUM_GOALS][2] = {
-    { 30.48f, 182.9f },
-    { 0.0f, 0.0f }
+    { 100.0f, 304.8f },
 };
 int goalIndex = 0;
+bool approachingGoal = false;
 bool atGoal = false;
 
 const float MAX_DISTANCE = 100.0f;
@@ -154,13 +154,15 @@ void runPotentialFields() {
 
     
     float pfCalculation = eTheta * K_P;
+    float adjustmentSum = 0.0f;
 
     if (SERVO_ON) {
         float adjustments[NUM_POSITIONS] = { 0, 0, 0, 0, 0 };
         for (int i = 0; i < NUM_POSITIONS; i++) { 
             float adjustment = (MAX_DISTANCE - measurements[i]) * POSITION_MULTIPLIERS[i];
             if (distanceToGoal < measurements[i]) {
-                adjustment /= 50;
+                // Keep adjustment at 0 because goal is closer
+                continue;
             }
             adjustments[i] = adjustment;
         }
@@ -168,31 +170,31 @@ void runPotentialFields() {
         for (int i = 0; i < NUM_POSITIONS; i++) {
             if (i < 2) {
                 if (checkRange == CheckRange::Left) {
-                    pfCalculation += K_SIDE_CHECK * adjustments[i];
+                    adjustmentSum += K_SIDE_CHECK * adjustments[i];
                 } else {
-                    pfCalculation += adjustments[i];
+                    adjustmentSum += adjustments[i];
                 }
             } else if (i > 2) {
                 if (checkRange == CheckRange::Right) {
-                    pfCalculation -= K_SIDE_CHECK * adjustments[i];
+                    adjustmentSum -= K_SIDE_CHECK * adjustments[i];
                 } else {
-                    pfCalculation -= adjustments[i];
+                    adjustmentSum -= adjustments[i];
                 }
             } else {
                 switch (checkRange) {
                     case CheckRange::Left:
-                        pfCalculation += adjustments[i];
+                        adjustmentSum += adjustments[i];
                         break;
                     case CheckRange::Right:
-                        pfCalculation -= adjustments[i];
+                        adjustmentSum -= adjustments[i];
                         break;
                     case CheckRange::Full:
                         float leftWeight = adjustments[0] + adjustments[1];
                         float rightWeight = adjustments[3] + adjustments[4];
                         if (leftWeight >= rightWeight) {
-                            pfCalculation += adjustments[i];
+                            adjustmentSum += adjustments[i];
                         } else {
-                            pfCalculation -= adjustments[i];
+                            adjustmentSum -= adjustments[i];
                         }
                         break;
                 }
@@ -201,14 +203,15 @@ void runPotentialFields() {
 
         switch (getClosestIndex()) {
             case 0:
-                pfCalculation += adjustments[0];
+                adjustmentSum += adjustments[0];
             case 1:
-                pfCalculation += 0.5f * adjustments[1];
+                adjustmentSum += 0.5f * adjustments[1];
             case 3:
-                pfCalculation -= 0.5f * adjustments[3];
+                adjustmentSum -= 0.5f * adjustments[3];
             case 4:
-                pfCalculation -= adjustments[4];
+                adjustmentSum -= adjustments[4];
         }
+        pfCalculation += adjustmentSum;
     }
 
     int leftSpeed = BASE_SPEED + pfCalculation;
@@ -216,7 +219,11 @@ void runPotentialFields() {
 
     if (distanceToGoal > 1.5f) {
         // Slow down the robot as it approaches the target
-        if (distanceToGoal < 10) {
+        if (distanceToGoal < 10 && abs(adjustmentSum) < 1.0f) {
+            if (!approachingGoal) {
+                buzzer.play("e32");
+                approachingGoal = true;
+            }
             leftSpeed *= distanceToGoal / 10;
             rightSpeed *= distanceToGoal / 10;
 
@@ -228,6 +235,8 @@ void runPotentialFields() {
             if (rightSpeed < 30) {
                 rightSpeed = 30;
             }
+        } else {
+            approachingGoal = false;
         }
     } else {
         leftSpeed = 0;
@@ -319,8 +328,14 @@ void updateCheckRange() {
 
     float diff = leftSum - rightSum;
     if (diff <= -1 * CHECK_THRESHOLD) {
+        if (checkRange == CheckRange::Full) {
+            buzzer.play("a32");
+        }
         checkRange = CheckRange::Left;
     } else if (diff >= CHECK_THRESHOLD) {
+        if (checkRange == CheckRange::Full) {
+            buzzer.play("a32");
+        }
         checkRange = CheckRange::Right;
     } else {
         checkRange = CheckRange::Full;
